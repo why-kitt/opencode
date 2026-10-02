@@ -1,0 +1,6 @@
+{
+  "upstream": "anomalyco/opencode",
+  "validated_tag": "v1.18.34",
+  "bun_version": "1.4.1",
+  "patch_revision": 1
+}

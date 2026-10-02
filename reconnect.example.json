@@ -1,0 +1,7 @@
+{
+  "reconnect": {
+    "mode": "fixed",
+    "interval_ms": 3000,
+    "max_retries": 5000
+  }
+}

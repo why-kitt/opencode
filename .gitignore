@@ -1,0 +1,4 @@
+artifacts/
+opencode-src/
+__pycache__/
+*.pyc
