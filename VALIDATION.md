@@ -42,3 +42,9 @@ GitHub 仓库、push、Actions 云端执行和 Release 发布由用户后续操�
 - 编译后重连：7 次错误后第 8 次成功；预算 2 时严格 3 次请求。
 - 完整 ConPTY TUI：查询、非法输入、运行中更改间隔/次数通过，4 次请求间隔 1170/45/45 ms。
 - 所有临时数据在 E:\temp；未推送或发布。Actions 新增后台任务、配置合并和编译后回调验证。
+
+## Actions Windows cleanup fix — 2026-10-02
+
+The background behavior test passed in Actions, but teardown failed with EBUSY while removing its temporary directory. The test now requests backend disposal, terminates its own Windows process tree, and explicitly retries temporary-directory cleanup. If Windows retains a directory lock after 5 seconds, it prints a warning with the path; this cleanup-only condition does not turn passing assertions into a failure. Other cleanup errors and behavioral failures still fail the step. PASS is printed after teardown.
+
+Validated with Bun 1.4.1 on Windows: 4 cleanup tests passed using real child processes and directory locks, including process-tree termination, a released lock, a persistent lock and path-boundary protection. The compiled background callback/reassignment smoke passed with exit code 0. This changes builder tests only; the executable version remains 1.18.34-patched.2. GitHub Actions must be run after pushing the fix.

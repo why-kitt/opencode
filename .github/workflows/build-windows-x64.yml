@@ -108,6 +108,8 @@ jobs:
         run: bun test test/effect/cross-spawn-spawner.test.ts --timeout 30000 --only-failures
       - name: Test compiled CLI with local mock provider
         run: bun scripts/smoke.ts opencode-src/packages/opencode/dist/opencode-windows-x64/bin/opencode.exe
+      - name: Test Windows smoke cleanup
+        run: bun test scripts/smoke-cleanup.test.ts --timeout 15000
       - name: Test compiled background callbacks and reassignment
         run: bun scripts/background-smoke.ts opencode-src/packages/opencode/dist/opencode-windows-x64/bin/opencode.exe
       - name: Test live TUI reconnect controls

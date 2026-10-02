@@ -1,9 +1,10 @@
 // Compiled-server integration: actual parent model loop, task calls and completion callbacks.
 import { spawn } from "node:child_process"
-import { mkdtemp, mkdir, rm } from "node:fs/promises"
+import { mkdtemp, mkdir } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
 import assert from "node:assert/strict"
+import { removeSmokeDirectory, stopSmokeProcess } from "./smoke-cleanup"
 
 const binary = path.resolve(process.argv[2])
 const root = await mkdtemp(path.join(tmpdir(), "opencode-background-"))
@@ -26,7 +27,12 @@ const provider = Bun.serve({
   async fetch(request) {
     const input = await request.json()
     const serialized = JSON.stringify(input.messages)
-    const chunk = { id: "bg-smoke", object: "chat.completion.chunk", created: 1, model: input.model }
+    const chunk = {
+      id: "bg-smoke",
+      object: "chat.completion.chunk",
+      created: 1,
+      model: input.model,
+    }
     let content = "DONE"
     let tasks: { id: string; prompt: string; task_id?: string }[] = []
     if (input.model === "parent") {
@@ -96,7 +102,13 @@ const provider = Bun.serve({
       { ...chunk, choices: [{ index: 0, delta, finish_reason: null }] },
       {
         ...chunk,
-        choices: [{ index: 0, delta: {}, finish_reason: tasks.length ? "tool_calls" : "stop" }],
+        choices: [
+          {
+            index: 0,
+            delta: {},
+            finish_reason: tasks.length ? "tool_calls" : "stop",
+          },
+        ],
         usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
       },
     ]
@@ -105,7 +117,11 @@ const provider = Bun.serve({
     })
   },
 })
-const reservation = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response() })
+const reservation = Bun.serve({
+  hostname: "127.0.0.1",
+  port: 0,
+  fetch: () => new Response(),
+})
 const port = reservation.port
 reservation.stop(true)
 const config = {
@@ -123,7 +139,10 @@ const config = {
       name: "Test",
       env: [],
       npm: "@ai-sdk/openai-compatible",
-      options: { apiKey: "local", baseURL: `http://127.0.0.1:${provider.port}/v1` },
+      options: {
+        apiKey: "local",
+        baseURL: `http://127.0.0.1:${provider.port}/v1`,
+      },
       models: Object.fromEntries(
         ["parent", "child", "title"].map((name) => [
           name,
@@ -165,7 +184,10 @@ child.stdout.on("data", (data) => {
 child.stderr.on("data", (data) => {
   logs += data
 })
-const closed = new Promise<void>((resolve) => child.on("close", () => resolve()))
+let spawnError: Error | undefined
+child.on("error", (error) => {
+  spawnError = error
+})
 async function api(route: string, body?: object) {
   const response = await fetch(`http://127.0.0.1:${port}${route}`, {
     method: body ? "POST" : "GET",
@@ -178,6 +200,7 @@ async function api(route: string, body?: object) {
 try {
   const deadline = Date.now() + 90000
   while (true) {
+    if (spawnError) throw spawnError
     if (Date.now() > deadline) throw new Error(`Server startup timeout: ${logs}`)
     if (
       await fetch(`http://127.0.0.1:${port}/global/health`)
@@ -189,21 +212,32 @@ try {
   }
   assert.equal((await api("/experimental/capabilities")).backgroundSubagents, true)
   const session = await api("/session", { title: "Background integration" })
-  await api(`/session/${session.id}/prompt_async`, { parts: [{ type: "text", text: "Launch WORK_A and WORK_B" }] })
+  await api(`/session/${session.id}/prompt_async`, {
+    parts: [{ type: "text", text: "Launch WORK_A and WORK_B" }],
+  })
   while (!calls.includes("A2")) {
     if (Date.now() > deadline) throw new Error(`Callback/reassignment timeout: ${calls}\n${logs}`)
     await Bun.sleep(100)
   }
   assert(parentContinued)
   assert(reassigned)
-  console.log(
-    `PASS compiled background config, parent continuation, A callback and A2 reuse while B runs: ${calls.join(" -> ")}`,
-  )
 } finally {
   releaseA()
   releaseB()
-  child.kill()
-  await closed
-  provider.stop(true)
-  await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 })
+  // Give the backend a chance to release database/file watchers before terminating its process tree.
+  await fetch(`http://127.0.0.1:${port}/global/dispose`, {
+    method: "POST",
+    signal: AbortSignal.timeout(5000),
+  })
+    .then((response) => response.arrayBuffer())
+    .catch(() => undefined)
+  try {
+    await stopSmokeProcess(child)
+  } finally {
+    provider.stop(true)
+  }
+  await removeSmokeDirectory(root)
 }
+console.log(
+  `PASS compiled background config, parent continuation, A callback and A2 reuse while B runs: ${calls.join(" -> ")}`,
+)
