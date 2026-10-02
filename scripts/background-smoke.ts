@@ -5,6 +5,7 @@ import { tmpdir } from "node:os"
 import path from "node:path"
 import assert from "node:assert/strict"
 import { removeSmokeDirectory, stopSmokeProcess } from "./smoke-cleanup"
+import { smokeRequest, waitForSmokeServer } from "./smoke-http"
 
 const binary = path.resolve(process.argv[2])
 const root = await mkdtemp(path.join(tmpdir(), "opencode-background-"))
@@ -117,13 +118,6 @@ const provider = Bun.serve({
     })
   },
 })
-const reservation = Bun.serve({
-  hostname: "127.0.0.1",
-  port: 0,
-  fetch: () => new Response(),
-})
-const port = reservation.port
-reservation.stop(true)
 const config = {
   subagent_default_background: true,
   model: "test/parent",
@@ -153,12 +147,18 @@ const config = {
   },
 }
 await mkdir(path.join(root, "project"))
-const child = spawn(binary, ["serve", "--hostname", "127.0.0.1", "--port", String(port)], {
+const child = spawn(binary, ["serve", "--hostname", "127.0.0.1", "--port", "0", "--print-logs"], {
   cwd: path.join(root, "project"),
   windowsHide: true,
   stdio: ["ignore", "pipe", "pipe"],
   env: {
-    ...process.env,
+    ...Object.fromEntries(
+      Object.entries(process.env).filter(
+        ([key]) => !["http_proxy", "https_proxy", "all_proxy", "no_proxy"].includes(key.toLowerCase()),
+      ),
+    ),
+    OPENCODE_SERVER_PASSWORD: "",
+    OPENCODE_SERVER_USERNAME: "",
     TEMP: tmpdir(),
     TMP: tmpdir(),
     OPENCODE_EXPERIMENTAL: "false",
@@ -184,32 +184,16 @@ child.stdout.on("data", (data) => {
 child.stderr.on("data", (data) => {
   logs += data
 })
-let spawnError: Error | undefined
-child.on("error", (error) => {
-  spawnError = error
-})
+let baseURL: string | undefined
 async function api(route: string, body?: object) {
-  const response = await fetch(`http://127.0.0.1:${port}${route}`, {
-    method: body ? "POST" : "GET",
-    headers: { "content-type": "application/json" },
-    body: body ? JSON.stringify(body) : undefined,
-  })
-  assert(response.ok, `${route}: ${response.status} ${await response.clone().text()}`)
-  return response.status === 204 ? undefined : response.json()
+  assert(baseURL, "Server has not reported a healthy listening address")
+  const response = await smokeRequest(baseURL, route, body)
+  assert(response.status >= 200 && response.status < 300, `${route}: HTTP ${response.status}; ${response.body}`)
+  return response.status === 204 ? undefined : JSON.parse(response.body)
 }
 try {
+  baseURL = await waitForSmokeServer(child, () => logs)
   const deadline = Date.now() + 90000
-  while (true) {
-    if (spawnError) throw spawnError
-    if (Date.now() > deadline) throw new Error(`Server startup timeout: ${logs}`)
-    if (
-      await fetch(`http://127.0.0.1:${port}/global/health`)
-        .then((r) => r.ok)
-        .catch(() => false)
-    )
-      break
-    await Bun.sleep(100)
-  }
   assert.equal((await api("/experimental/capabilities")).backgroundSubagents, true)
   const session = await api("/session", { title: "Background integration" })
   await api(`/session/${session.id}/prompt_async`, {
@@ -225,12 +209,7 @@ try {
   releaseA()
   releaseB()
   // Give the backend a chance to release database/file watchers before terminating its process tree.
-  await fetch(`http://127.0.0.1:${port}/global/dispose`, {
-    method: "POST",
-    signal: AbortSignal.timeout(5000),
-  })
-    .then((response) => response.arrayBuffer())
-    .catch(() => undefined)
+  if (baseURL) await smokeRequest(baseURL, "/global/dispose", {}, 5000).catch(() => undefined)
   try {
     await stopSmokeProcess(child)
   } finally {

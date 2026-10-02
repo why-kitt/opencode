@@ -48,3 +48,11 @@ GitHub 仓库、push、Actions 云端执行和 Release 发布由用户后续操�
 The background behavior test passed in Actions, but teardown failed with EBUSY while removing its temporary directory. The test now requests backend disposal, terminates its own Windows process tree, and explicitly retries temporary-directory cleanup. If Windows retains a directory lock after 5 seconds, it prints a warning with the path; this cleanup-only condition does not turn passing assertions into a failure. Other cleanup errors and behavioral failures still fail the step. PASS is printed after teardown.
 
 Validated with Bun 1.4.1 on Windows: 4 cleanup tests passed using real child processes and directory locks, including process-tree termination, a released lock, a persistent lock and path-boundary protection. The compiled background callback/reassignment smoke passed with exit code 0. This changes builder tests only; the executable version remains 1.18.34-patched.2. GitHub Actions must be run after pushing the fix.
+
+## Actions startup probe hardening — 2026-10-02
+
+A later Actions run printed the server listening address but timed out during the health probe. The old probe discarded HTTP failures and connection errors, so the supplied log does not establish the exact original cause.
+
+The smoke now lets the CLI allocate its listening port and reads the actual address from stdout. All control requests use node:http directly, with no pooled connection or environment proxy, a bounded request deadline and fully consumed response bodies. Child proxy/password settings are isolated from inherited runner settings. Readiness requires valid healthy=true JSON; rejected HTTP responses, network errors and backend logs are preserved in failures. The callback phase gets its own deadline after readiness.
+
+Local Windows/Bun 1.4.1 validation: 8 helper tests passed (including 503-to-healthy, HTTP 401 diagnostics, invalid health JSON and stalled response timeout). The compiled background smoke passed both normally and with deliberately invalid proxy settings plus an inherited test server password. Exact reproduction on GitHub remains pending a new workflow run after pushing this change. No executable source or version changed.
