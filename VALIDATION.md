@@ -29,3 +29,16 @@ TUI 验证根据真实 HTTP 请求次数与时间判断功能；终端采用增�
 Windows 检查发现上游通用进程、Effect spawner、LSP 和 taskkill 已有隐藏窗口参数；本补丁补齐剪贴板 PowerShell 路径。未改交互式 PTY 行为。
 
 GitHub 仓库、push、Actions 云端执行和 Release 发布由用户后续操作；本次未执行。流水线 YAML 已解析检查，固定的 Bun 1.4.1 官方 release 已确认存在。
+
+## patched.2 — 2026-10-02
+
+- 新增 subagent_default_background；配置 true 独立启用后台能力，显式 background:false 保持前台等待。
+- packages/opencode bun typecheck 通过。
+- task.test.ts：24 项通过（含默认后台、显式前台、A 完成通知和复用 ID 续派时 B 仍运行）。首次默认 5 秒超时遇到 8 个冷启动超时；按构建的 60 秒超时重跑全部通过。
+- 配置全局读取及项目覆盖：2 项通过；retry.test.ts：60 项通过；reconnect/worker：27 项通过。
+- 补丁应用器：5 项通过；JSON 补丁还原：21 个文件逐字节匹配。
+- Windows x64 编译成功，内嵌 Web UI，版本 1.18.34-patched.2。
+- 编译后后台集成：环境标志显式 false，配置 true；能力接口返回 true；真实主代理循环启动 A/B 后继续，A 完成通知唤醒主代理，复用 A 的 task_id 执行 A2 时 B 仍运行。使用本地模拟模型，无付费 API。
+- 编译后重连：7 次错误后第 8 次成功；预算 2 时严格 3 次请求。
+- 完整 ConPTY TUI：查询、非法输入、运行中更改间隔/次数通过，4 次请求间隔 1170/45/45 ms。
+- 所有临时数据在 E:\temp；未推送或发布。Actions 新增后台任务、配置合并和编译后回调验证。

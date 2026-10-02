@@ -3,5 +3,6 @@
     "mode": "fixed",
     "interval_ms": 3000,
     "max_retries": 5000
-  }
+  },
+  "subagent_default_background": true
 }

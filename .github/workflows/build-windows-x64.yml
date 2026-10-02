@@ -83,8 +83,11 @@ jobs:
         run: |
           bun typecheck
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          bun test test/session/reconnect.test.ts test/session/reconnect-worker.test.ts test/session/retry.test.ts --timeout 60000 --only-failures
+          bun test test/tool/task.test.ts test/session/reconnect.test.ts test/session/reconnect-worker.test.ts test/session/retry.test.ts --timeout 60000 --only-failures
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Check background config precedence
+        working-directory: opencode-src/packages/opencode
+        run: bun test test/config/config.test.ts --test-name-pattern "subagent background default" --timeout 60000
       - name: Check TUI
         working-directory: opencode-src/packages/tui
         shell: pwsh
@@ -105,6 +108,8 @@ jobs:
         run: bun test test/effect/cross-spawn-spawner.test.ts --timeout 30000 --only-failures
       - name: Test compiled CLI with local mock provider
         run: bun scripts/smoke.ts opencode-src/packages/opencode/dist/opencode-windows-x64/bin/opencode.exe
+      - name: Test compiled background callbacks and reassignment
+        run: bun scripts/background-smoke.ts opencode-src/packages/opencode/dist/opencode-windows-x64/bin/opencode.exe
       - name: Test live TUI reconnect controls
         run: node scripts/tui-smoke.cjs opencode-src
       - name: Package and record source diff

@@ -25,9 +25,9 @@
 产物位于 Artifact `opencode-windows-x64`（保留 7 天）和可选 Release：
 
 ```text
-opencode-1.18.34-patched.1-windows-x64.zip
-opencode-1.18.34-patched.1-windows-x64.patch
-opencode-1.18.34-patched.1-windows-x64.json
+opencode-1.18.34-patched.2-windows-x64.zip
+opencode-1.18.34-patched.2-windows-x64.patch
+opencode-1.18.34-patched.2-windows-x64.json
 SHA256SUMS.txt
 ```
 
@@ -53,7 +53,7 @@ python scripts/apply_patches.py --root opencode-src
 Push-Location opencode-src
 bun install --frozen-lockfile
 Pop-Location
-$env:OPENCODE_VERSION = '1.18.34-patched.1'
+$env:OPENCODE_VERSION = '1.18.34-patched.2'
 $env:OPENCODE_CHANNEL = 'latest'
 $env:OPENCODE_RELEASE = ''
 Push-Location opencode-src/packages/opencode
@@ -63,7 +63,7 @@ bun run script/build.ts --single --skip-install
 Pop-Location
 bun scripts/smoke.ts opencode-src/packages/opencode/dist/opencode-windows-x64/bin/opencode.exe
 node scripts/tui-smoke.cjs opencode-src
-python scripts/package.py --root opencode-src --tag v1.18.34 --version 1.18.34-patched.1
+python scripts/package.py --root opencode-src --tag v1.18.34 --version 1.18.34-patched.2
 ```
 
 ## 补丁维护
@@ -81,3 +81,5 @@ python -m unittest discover -s tests -v
 捕获脚本只收集 `packages/` 下的改动；请审阅生成的 `patches/windows-reconnect.json`，确保没有混入无关改动。还原测试从 Git 中导出干净基线，将补丁结果逐文件与已审阅源码比较。更新补丁后递增 `build.json` 的 `patch_revision`，同步版本示例，并重新跑构建和模拟服务验证。
 
 本地验证记录见 [VALIDATION.md](VALIDATION.md)。GitHub 上的实际 Actions 运行需要你 push 后手动触发。
+
+`patched.2` 新增 `subagent_default_background` 配置：默认后台且允许显式前台，配置本身启用后台能力。编译后集成测试验证 A 完成后主代理在 B 仍运行时续派 A2。
